@@ -319,6 +319,12 @@ SYM_CODE_START(startup_64)
 	 * and command line.
 	 */
 
+	pushq	%rax
+	xorq	%rax, %rax
+	movb	$0x39, %al
+	outb	$0x80
+	popq	%rax
+
 	cld
 	cli
 
