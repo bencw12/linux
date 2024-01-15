@@ -7131,13 +7131,15 @@ static int kvm_nx_huge_page_recovery_worker(struct kvm *kvm, uintptr_t data)
 
 int kvm_mmu_post_init_vm(struct kvm *kvm)
 {
-	int err;
+	int err = 0;
 
-	err = kvm_vm_create_worker_thread(kvm, kvm_nx_huge_page_recovery_worker, 0,
-					  "kvm-nx-lpage-recovery",
-					  &kvm->arch.nx_huge_page_recovery_thread);
-	if (!err)
-		kthread_unpark(kvm->arch.nx_huge_page_recovery_thread);
+	if(nx_huge_pages){
+		err = kvm_vm_create_worker_thread(kvm, kvm_nx_huge_page_recovery_worker, 0,
+						"kvm-nx-lpage-recovery",
+						&kvm->arch.nx_huge_page_recovery_thread);
+		if (!err)
+			kthread_unpark(kvm->arch.nx_huge_page_recovery_thread);
+	}
 
 	return err;
 }
