@@ -204,6 +204,8 @@ EXPORT_SYMBOL(node_states);
 
 gfp_t gfp_allowed_mask __read_mostly = GFP_BOOT_MASK;
 
+int sanitize_freed_pages;
+
 /*
  * A cached value of the page's pageblock's migratetype, used when the page is
  * put on a pcplist. Used to avoid the pageblock migratetype lookup when
@@ -1166,6 +1168,12 @@ static __always_inline bool free_pages_prepare(struct page *page,
 					   PAGE_SIZE << order);
 		debug_check_no_obj_freed(page_address(page),
 					   PAGE_SIZE << order);
+	}
+
+	if (sanitize_freed_pages) {
+	  int i;
+	  for (i = 0; i < (1 << order); i++)
+	    clear_highpage(page + i);
 	}
 
 	kernel_poison_pages(page, 1 << order);
@@ -5605,6 +5613,7 @@ static int page_alloc_cpu_online(unsigned int cpu)
 void __init page_alloc_init_cpuhp(void)
 {
 	int ret;
+	sanitize_freed_pages = 1;
 
 	ret = cpuhp_setup_state_nocalls(CPUHP_PAGE_ALLOC,
 					"mm/page_alloc:pcp",
