@@ -226,6 +226,12 @@ config ZSMALLOC_CHAIN_SIZE
 
 	  For more information, see zsmalloc documentation.
 
+config TRACEFAULT
+       tristate "Trace all page faults"
+       default n
+       help
+	Enable to trace page faults and output to fake hypervisor device.
+
 menu "SLAB allocator options"
 
 choice
