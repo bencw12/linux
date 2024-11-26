@@ -621,6 +621,12 @@ config ZSMALLOC_STAT
 	  information to userspace via debugfs.
 	  If unsure, say N.
 
+config TRACEFAULT
+       tristate "Trace all page faults"
+       default n
+       help
+	Enable to trace all page faults and output to hypervisor
+
 config GENERIC_EARLY_IOREMAP
 	bool
 

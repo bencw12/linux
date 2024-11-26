@@ -3616,7 +3616,6 @@ out:
 
 static int do_read_fault(struct vm_fault *vmf)
 {
-	struct vm_area_struct *vma = vmf->vma;
 	int ret = 0;
 
 	/*
@@ -3624,11 +3623,14 @@ static int do_read_fault(struct vm_fault *vmf)
 	 * if page by the offset is not ready to be mapped (cold cache or
 	 * something).
 	 */
+#ifndef CONFIG_TRACEFAULT
+	struct vm_area_struct *vma = vmf->vma;
 	if (vma->vm_ops->map_pages && fault_around_bytes >> PAGE_SHIFT > 1) {
 		ret = do_fault_around(vmf);
 		if (ret)
 			return ret;
 	}
+#endif
 
 	ret = __do_fault(vmf);
 	if (unlikely(ret & (VM_FAULT_ERROR | VM_FAULT_NOPAGE | VM_FAULT_RETRY)))

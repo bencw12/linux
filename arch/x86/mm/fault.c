@@ -16,6 +16,7 @@
 #include <linux/prefetch.h>		/* prefetchw			*/
 #include <linux/context_tracking.h>	/* exception_enter(), ...	*/
 #include <linux/uaccess.h>		/* faulthandler_disabled()	*/
+#include <linux/tracefault.h>           /* trace_fault()                */
 
 #include <asm/cpufeature.h>		/* boot_cpu_has, ...		*/
 #include <asm/traps.h>			/* dotraplinkage, ...		*/
@@ -1493,6 +1494,11 @@ do_page_fault(struct pt_regs *regs, unsigned long error_code)
 		trace_page_fault_entries(address, regs, error_code);
 
 	__do_page_fault(regs, error_code, address);
+
+#ifdef CONFIG_TRACEFAULT
+	trace_fault(address);
+#endif
+
 	exception_exit(prev_state);
 }
 NOKPROBE_SYMBOL(do_page_fault);
