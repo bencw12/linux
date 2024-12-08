@@ -4,13 +4,10 @@
 #include <linux/sched.h>
 #include <linux/hugetlb.h>
 
-static int walk_pte_range(pmd_t *pmd, unsigned long addr, unsigned long end,
-			  struct mm_walk *walk)
-{
-	pte_t *pte;
+static int walk_pte_range_inner(pte_t *pte, unsigned long addr, unsigned long end,
+				struct mm_walk *walk) {
 	int err = 0;
 
-	pte = pte_offset_map(pmd, addr);
 	for (;;) {
 		err = walk->pte_entry(pte, addr, addr + PAGE_SIZE, walk);
 		if (err)
@@ -19,6 +16,26 @@ static int walk_pte_range(pmd_t *pmd, unsigned long addr, unsigned long end,
 		if (addr == end)
 			break;
 		pte++;
+	}
+
+	return err;
+}
+
+static int walk_pte_range(pmd_t *pmd, unsigned long addr, unsigned long end,
+			  struct mm_walk *walk)
+{
+	pte_t *pte;
+	int err = 0;
+	spinlock_t *ptl;
+
+	if (walk->no_vma) {
+	  pte = pte_offset_map(pmd, addr);
+	  err = walk_pte_range_inner(pte, addr, end, walk);
+	  pte_unmap(pte);
+	} else {
+	  pte = pte_offset_map_lock(walk->mm, pmd, addr, &ptl);
+	  err = walk_pte_range_inner(pte, addr, end, walk);
+	  pte_unmap_unlock(pte, ptl);
 	}
 
 	pte_unmap(pte);
@@ -36,7 +53,7 @@ static int walk_pmd_range(pud_t *pud, unsigned long addr, unsigned long end,
 	do {
 again:
 		next = pmd_addr_end(addr, end);
-		if (pmd_none(*pmd) || !walk->vma) {
+		if (pmd_none(*pmd) || (!walk->vma && !walk->no_vma)) {
 			if (walk->pte_hole)
 				err = walk->pte_hole(addr, next, walk);
 			if (err)
@@ -56,12 +73,16 @@ again:
 		 * Check this here so we only break down trans_huge
 		 * pages when we _need_ to
 		 */
-		if (!walk->pte_entry)
+		if ((!walk->no_vma && (pmd_leaf(*pmd) || !pmd_present(*pmd))) ||
+		    !(walk->pte_entry))
 			continue;
 
-		split_huge_pmd(walk->vma, pmd, addr);
-		if (pmd_trans_unstable(pmd))
-			goto again;
+		if (walk->vma) {
+		  split_huge_pmd(walk->vma, pmd, addr);
+		  if (pmd_trans_unstable(pmd))
+		    goto again;
+		}
+		
 		err = walk_pte_range(pmd, addr, next, walk);
 		if (err)
 			break;
@@ -81,7 +102,7 @@ static int walk_pud_range(p4d_t *p4d, unsigned long addr, unsigned long end,
 	do {
  again:
 		next = pud_addr_end(addr, end);
-		if (pud_none(*pud) || !walk->vma) {
+		if (pud_none(*pud) || (!walk->vma && !walk->no_vma)) {
 			if (walk->pte_hole)
 				err = walk->pte_hole(addr, next, walk);
 			if (err)
@@ -101,12 +122,17 @@ static int walk_pud_range(p4d_t *p4d, unsigned long addr, unsigned long end,
 			}
 		}
 
-		split_huge_pud(walk->vma, pud, addr);
+		if ((!walk->vma && (pud_leaf(*pud) || !pud_present(*pud))) ||
+		    !(walk->pmd_entry || walk->pte_entry))
+		  continue;
+
+		if (walk->vma)
+		  split_huge_pud(walk->vma, pud, addr);
 		if (pud_none(*pud))
 			goto again;
 
-		if (walk->pmd_entry || walk->pte_entry)
-			err = walk_pmd_range(pud, addr, next, walk);
+		err = walk_pmd_range(pud, addr, next, walk);
+		
 		if (err)
 			break;
 	} while (pud++, addr = next, addr != end);
@@ -333,6 +359,41 @@ int walk_page_range(unsigned long start, unsigned long end,
 			break;
 	} while (start = next, start < end);
 	return err;
+}
+
+int walk_page_range_kernel(unsigned long start, unsigned long end,
+			   struct mm_walk *walk, void *private)
+{
+  get_online_mems();
+  // ignore interrupts
+
+  down_read(&init_mm.mmap_sem);
+
+  walk_page_range_novma(&init_mm, start, end,
+			walk, init_mm.pgd, private);
+
+  up_read(&init_mm.mmap_sem);
+  put_online_mems();
+  return 0;
+}
+
+int walk_page_range_novma(struct mm_struct *mm, unsigned long start,
+			  unsigned long end, struct mm_walk *walk,
+			  pgd_t *pgd,
+			  void *private)
+{
+  walk->no_vma = true;
+  walk->private = private;
+  walk->mm = mm;
+  walk->vma = NULL;
+
+  if (start >= end || !walk->mm)
+    return -EINVAL;
+
+  lockdep_assert_held(&mm->mmap_sem);
+  VM_BUG_ON_MM(!rwsem_is_locked(&mm->mmap_sem), mm);
+
+  return __walk_page_range(start, end, walk);
 }
 
 int walk_page_vma(struct vm_area_struct *vma, struct mm_walk *walk)

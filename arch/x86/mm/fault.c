@@ -1495,9 +1495,9 @@ do_page_fault(struct pt_regs *regs, unsigned long error_code)
 
 	__do_page_fault(regs, error_code, address);
 
-#ifdef CONFIG_TRACEFAULT
-	trace_fault(address);
-#endif
+/* #ifdef CONFIG_TRACEFAULT */
+/* 	trace_fault(address); */
+/* #endif */
 
 	exception_exit(prev_state);
 }

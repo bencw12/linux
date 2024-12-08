@@ -28,6 +28,8 @@ DEFINE_SPINLOCK(trace_lock);
 #define TRACE_LEN (PAGE_SIZE / sizeof(struct fault_info))
 #define TRACE_PORT 0x81
 
+static struct dentry *page_detective_debugfs_dir;
+
 static struct fault_info *trace;
 static unsigned long idx = 0;
 static unsigned long long mmio_base = 0;
@@ -212,37 +214,83 @@ int trace_fault(unsigned long fault_vaddr) {
     return 0;  
 }
 
-irqreturn_t tracefault_irq_handler(int irq, void *dev_id) {
+void trace_mem(void) {
   unsigned long pfn;
   int maps = 0;
   struct pd_info info = {0};
   info.info.type = 3;
   bool wrote_stats = false;
 
-  if (!memtrace_enabled())
-    return IRQ_HANDLED;
-
   // trace all of phys mem
   for (pfn = 1; pfn < totalram_pages; pfn++) {
     maps = page_detective(pfn, &info);
-    // luckily this only happens once
     if (!wrote_stats) {
       writel(info.proc_nr, base + 4);
       writel(info.mmap_nr, base + 8);
       wrote_stats = true;
     }
-    info.info.type = 3;
+
     if(maps)
       add_trace(&info.info);
   }
 
+  // signal done
   info.info.type = 4;
   add_trace(&info.info);
 
   flush_trace();
+}
+
+irqreturn_t tracefault_irq_handler(int irq, void *dev_id) {
+  if (!memtrace_enabled())
+    return IRQ_HANDLED;
+
+  trace_mem();
   
   return IRQ_HANDLED;
 }
+
+static ssize_t page_detective_phys_write(struct file *file,
+					 const char __user *data,
+					 size_t count, loff_t *ppos)
+{
+	u64 phys_addr;
+	int err;
+
+	/* If canceled by user simply return without printing anything */
+	/* err = mutex_lock_killable(&page_detective_mutex); */
+	/* if (err) */
+	/* 	return count; */
+
+	
+	trace_mem();
+	/* err = kstrtou64_from_user(data, count, 0, &phys_addr); */
+
+	/* if (err) { */
+	/* 	pr_err("%s: Failed to parse physical address\n", __func__); */
+	/* 	/\* mutex_unlock(&page_detective_mutex); *\/ */
+	/* 	return err; */
+	/* } */
+
+	/* mutex_unlock(&page_detective_mutex); */
+
+	return count;
+}
+
+static int page_detective_open(struct inode *inode, struct file *file)
+{
+	/* Deny access if not CAP_SYS_ADMIN */
+	if (!capable(CAP_SYS_ADMIN))
+		return -EPERM;
+
+	return simple_open(inode, file);
+}
+
+static const struct file_operations page_detective_virt_fops = {
+	.owner = THIS_MODULE,
+	.open = page_detective_open,
+	.write = page_detective_phys_write,
+};
 
 static int __init tracefault_init(void)
 {
@@ -288,6 +336,12 @@ static int __init tracefault_init(void)
     writeq(phys, base);
 
     init = 1;
+
+
+    page_detective_debugfs_dir = debugfs_create_dir("traecfault", NULL);
+
+    debugfs_create_file("trace", 0200, page_detective_debugfs_dir, NULL,
+			&page_detective_virt_fops);
 
     info("init done\n");
     

@@ -1283,26 +1283,32 @@ void unmap_vmas(struct mmu_gather *tlb, struct vm_area_struct *start_vma,
  * (see the comment on walk_page_range() for more details)
  */
 struct mm_walk {
-	int (*pud_entry)(pud_t *pud, unsigned long addr,
+  int (*pud_entry)(pud_t *pud, unsigned long addr,
 			 unsigned long next, struct mm_walk *walk);
-	int (*pmd_entry)(pmd_t *pmd, unsigned long addr,
+  int (*pmd_entry)(pmd_t *pmd, unsigned long addr,
 			 unsigned long next, struct mm_walk *walk);
-	int (*pte_entry)(pte_t *pte, unsigned long addr,
+  int (*pte_entry)(pte_t *pte, unsigned long addr,
 			 unsigned long next, struct mm_walk *walk);
-	int (*pte_hole)(unsigned long addr, unsigned long next,
+  int (*pte_hole)(unsigned long addr, unsigned long next,
 			struct mm_walk *walk);
-	int (*hugetlb_entry)(pte_t *pte, unsigned long hmask,
+  int (*hugetlb_entry)(pte_t *pte, unsigned long hmask,
 			     unsigned long addr, unsigned long next,
 			     struct mm_walk *walk);
-	int (*test_walk)(unsigned long addr, unsigned long next,
-			struct mm_walk *walk);
-	struct mm_struct *mm;
-	struct vm_area_struct *vma;
-	void *private;
+  int (*test_walk)(unsigned long addr, unsigned long next,
+			 struct mm_walk *walk);
+  struct mm_struct *mm;
+  struct vm_area_struct *vma;
+  void *private;
+  bool no_vma;
 };
-
+int walk_page_range_kernel(unsigned long start, unsigned long end,
+			   struct mm_walk *walk, void *private);
 int walk_page_range(unsigned long addr, unsigned long end,
 		struct mm_walk *walk);
+int walk_page_range_novma(struct mm_struct *mm, unsigned long start,
+			  unsigned long end, struct mm_walk *walk,
+			  pgd_t *pgd,
+			  void *private);
 int walk_page_vma(struct vm_area_struct *vma, struct mm_walk *walk);
 void free_pgd_range(struct mmu_gather *tlb, unsigned long addr,
 		unsigned long end, unsigned long floor, unsigned long ceiling);
